@@ -69,6 +69,12 @@ export function whenCapturesSettled(requestId: string): Promise<void> {
   });
 }
 
+/** A forced reload must not outrun the document's initial cookie publication. */
+export async function whenNavigationCapturesSettled(tabId: number): Promise<void> {
+  const requests = [...navigationCaptureTabs].filter(([, id]) => id === tabId);
+  await Promise.all(requests.map(([requestId]) => whenCapturesSettled(requestId)));
+}
+
 /**
  * onBeforeSendHeaders: records whether this request left with stale cookies —
  * before its own chain's previous hop, or its tab's document, finished capture.

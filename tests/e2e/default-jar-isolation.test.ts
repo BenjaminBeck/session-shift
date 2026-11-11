@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises'
 import { test, expect } from './extension-fixtures'
 import type { BrowserContext, Page } from '@playwright/test'
 import { startLaravelSessionServer, type LaravelSessionServer, WRONG_PASSWORD_FLASH } from './laravel-session-mock-server'
@@ -14,7 +15,15 @@ const ENTRY_PATHS: EntryPath[] = ['createSessionTab', 'popupSwitch', 'linkedTab'
 
 let app: LaravelSessionServer
 test.beforeEach(() => { app = startLaravelSessionServer() })
-test.afterEach(async () => { await new Promise<void>((resolve) => app.server.close(() => resolve())) })
+test.afterEach(async ({ context }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    const requestLog = testInfo.outputPath('mock-server-requests.json')
+    await writeFile(requestLog, JSON.stringify(app.log, null, 2))
+    await testInfo.attach('mock-server-requests', { path: requestLog, contentType: 'application/json' })
+    await testInfo.attach('page-urls', { body: JSON.stringify(context.pages().map(p => p.url())), contentType: 'application/json' })
+  }
+  await new Promise<void>((resolve) => app.server.close(() => resolve()))
+})
 
 async function extensionPage(context: BrowserContext, extensionId: string): Promise<Page> {
   const page = await context.newPage()
@@ -63,8 +72,9 @@ async function openInProfile(
     const mark = app.log.length
     const jarAtJoin = await jarSnapshot(context)
     const opened = context.waitForEvent('page')
-    await helper.evaluate(async ({ url, sessionId }) =>
+    const result = await helper.evaluate(async ({ url, sessionId }) =>
       chrome.runtime.sendMessage({ action: 'createSessionTab', payload: { url, sessionId } }), { url, sessionId })
+    expect(result).toMatchObject({ success: true })
     const page = await opened
     await waitForLoads(page, 2)
     return { page, mark, jarAtJoin }

@@ -16,10 +16,19 @@
 // The listener unregisters itself before issuing that reload — otherwise the
 // reload's own completion would re-trigger it, looping forever.
 
+import { whenNavigationCapturesSettled } from './redirect-hop-stale-cookie-guard.js';
+
 export function forceFreshLoadOnce(tabId: number): void {
-  const onUpdated = async (updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo): Promise<void> => {
+  const onUpdated = async (updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab): Promise<void> => {
     if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+    // tabs.create starts at about:blank. Its delayed completion must not
+    // cancel the real navigation or consume this one-shot cache bypass.
+    if (!tab.url || !/^https?:/.test(tab.url)) return;
     stop();
+    // Reloading while Set-Cookie is still being published creates another
+    // guest session. Its response is then correctly rejected as stale, but
+    // its rendered CSRF token no longer matches our retained session cookie.
+    await whenNavigationCapturesSettled(tabId);
     chrome.tabs.reload(tabId, { bypassCache: true }).catch(() => {});
   };
 
