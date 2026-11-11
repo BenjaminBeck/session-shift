@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { buildDnrRulesForCookieStore } from '../background/dnr-cookie-rule-builder.js'
 import { cookieKey } from '../lib/cookie-parser.js'
 
@@ -20,7 +20,7 @@ function build(overrides = {}) {
 }
 
 describe('buildDnrRulesForCookieStore — rule budget', () => {
-  it('drops deepest-path scopes first so root scopes survive the cap', () => {
+  it('fails closed rather than publishing incomplete cookie rules', () => {
     const host = 'shop.example.com'
     const store = {
       [cookieKey('A', host, '/')]: hostCookie('A', host, '/'),
@@ -30,7 +30,7 @@ describe('buildDnrRulesForCookieStore — rule budget', () => {
 
     // Budget: 3 base rules (request strip, response strip, held-redirect
     // Location removal) + 2 cookie rules. Three scopes compete for two slots.
-    const rules = buildDnrRulesForCookieStore({
+    expect(() => buildDnrRulesForCookieStore({
       tabId: 1,
       ruleIds: [1, 2, 3, 4, 5],
       boundHost: host,
@@ -38,13 +38,7 @@ describe('buildDnrRulesForCookieStore — rule budget', () => {
       store,
       serializeOpts: {},
       resourceTypes: ['main_frame'],
-    })
-
-    expect(rules.length).toBe(5)
-    const filters = rules.map((rule) => rule.condition.regexFilter ?? '')
-    expect(filters.some((f) => f === '^https://shop\\.example\\.com(?::[0-9]+)?/')).toBe(true)
-    expect(filters.some((f) => f.includes('/mid'))).toBe(true)
-    expect(filters.some((f) => f.includes('/deep/page'))).toBe(false)
+    })).toThrow(/rule budget exhausted/)
   })
 })
 
@@ -114,22 +108,10 @@ describe('buildDnrRulesForCookieStore — third-party Cookie strip', () => {
   })
 })
 
-describe('buildDnrRulesForCookieStore — budget-exhaustion warning', () => {
-  it('console.warn fires with dropped count when the rule budget is exceeded', () => {
-    const host = 'shop.example.com'
-    const store = {
-      [cookieKey('A', host, '/')]: hostCookie('A', host, '/'),
-      [cookieKey('B', host, '/deep/page')]: hostCookie('B', host, '/deep/page'),
-      [cookieKey('C', host, '/mid')]: hostCookie('C', host, '/mid'),
-    }
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    // 2 base + 1 scope slot → 2 of 3 scopes dropped.
-    buildDnrRulesForCookieStore({
-      tabId: 7, ruleIds: [1, 2, 3], boundHost: host, scheme: 'https',
-      store, serializeOpts: {}, resourceTypes: ['main_frame'],
-    })
-    expect(warn).toHaveBeenCalledOnce()
-    expect(warn.mock.calls[0][0]).toMatch(/budget.*exhausted.*tab 7/)
-    warn.mockRestore()
+describe('buildDnrRulesForCookieStore — budget exhaustion', () => {
+  it('does not silently omit cookies when no context rules fit', () => {
+    expect(() => build({ ruleIds: [1, 2, 3], store: {
+      'A|shop.example.com|/': hostCookie('A', 'shop.example.com', '/'),
+    } })).toThrow(/rule budget exhausted/)
   })
 })

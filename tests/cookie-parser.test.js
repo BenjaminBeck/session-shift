@@ -315,7 +315,7 @@ describe('parseDocumentCookie', () => {
 
   it('parses name=value with default path from the request URL', () => {
     const c = parseDocumentCookie('foo=bar', URL)
-    expect(c).toEqual({ name: 'foo', value: 'bar', path: '/sub', expires: null })
+    expect(c).toEqual({ name: 'foo', value: 'bar', path: '/sub', expires: null, secure: false, sameSite: null })
   })
 
   it('adopts a page-supplied Path', () => {

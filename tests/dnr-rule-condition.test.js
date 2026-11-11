@@ -144,7 +144,7 @@ describe('updateDNRRulesForTab', () => {
     await updateDNRRulesForTab(14, 'session_localhost')
 
     const [{ addRules }] = chrome.declarativeNetRequest.updateSessionRules.mock.calls.at(-1)
-    const cookieRule = addRules.find((rule) => rule.action.requestHeaders?.[0]?.value === 'user=alice')
+    const cookieRule = addRules.find((rule) => rule.action.requestHeaders?.[0]?.value === 'user=alice' && rule.condition.regexFilter?.startsWith('^http://'))
     expect(cookieRule.condition.regexFilter).toBe('^http://localhost(?::[0-9]+)?/')
   })
 })

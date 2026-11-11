@@ -89,6 +89,12 @@ describe('page-api-proxy window.cookieStore', () => {
     expect(await window.cookieStore.get('missing')).toBeNull()
   })
 
+  it('forwards explicit SameSite and rejects malformed attributes', async () => {
+    await window.cookieStore.set({ name: 'sid', value: 'abc', sameSite: 'strict' })
+    expect(lastPayload().setCookieStr).toContain('; SameSite=strict')
+    await expect(window.cookieStore.set({ name: 'sid', value: 'abc', sameSite: 'none; Domain=evil.test' })).rejects.toThrow()
+  })
+
   it('set forwards a setCookieStr and updates the local map', async () => {
     await window.cookieStore.set('sid', 'abc')
     expect(lastPayload().setCookieStr).toBe('sid=abc')

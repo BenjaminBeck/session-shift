@@ -96,11 +96,7 @@ function buildCookieRuleScopes(store: Record<string, CookieStoreEntry>, boundHos
   for (const [host, paths] of pathsByDomain) {
     for (const path of paths) scopes.push({ type: 'domain', host, path });
   }
-  // Shortest paths first: when the rule budget is exhausted, deeper-path scopes
-  // are dropped before root scopes. A dropped deep-path scope still matches its
-  // shorter-path rule (minus path-specific cookies); a dropped root scope would
-  // leave root requests with no Cookie header at all. Rule matching uses
-  // per-rule priority, not this order, so selection order is safe to change.
+  // Deterministic ordering; an exhausted budget rejects the entire publication.
   return scopes.sort((left, right) =>
     left.path.length - right.path.length ||
     (left.type === right.type ? left.host.localeCompare(right.host) : left.type === 'host' ? -1 : 1)
@@ -204,7 +200,7 @@ export function buildDnrRulesForCookieStore(options: BuildRuleOptions): DNRRule[
   // so Chrome commits it instead of following it before those cookies are
   // captured; SessionShift finishes the hop (see held-redirects.ts). The
   // Server-Timing marker lets the content script stop only held documents.
-  // `responseHeaders` conditions need Chrome 128 (manifest minimum).
+  // `responseHeaders` conditions need Chrome 128 or newer.
   addRules.push({
     id: options.ruleIds[addRules.length],
     priority: 100,
@@ -223,33 +219,44 @@ export function buildDnrRulesForCookieStore(options: BuildRuleOptions): DNRRule[
   });
 
   const scopes = buildCookieRuleScopes(options.store, options.boundHost);
-  for (let i = 0; i < scopes.length; i++) {
-    const scope = scopes[i];
-    if (addRules.length >= options.ruleIds.length) {
-      // Budget exhausted: deeper-path scopes are dropped (shortest-path-first sort
-      // makes this safe — root rules survive). Surface it so a user hitting the cap
-      // can diagnose missing cookies on deep paths.
-      console.warn(
-        `[dnr] rule budget (${options.ruleIds.length}) exhausted for tab ${options.tabId}; ` +
-        `${scopes.length - i} cookie scope(s) dropped`,
-      );
-      break;
-    }
-    const requestScheme = options.scheme ?? 'https';
+  for (const scope of scopes) {
+    for (const requestScheme of ['https', 'http'] as const) {
+    // Emit a complete header for each context; appending individual cookies
+    // would let Chrome combine headers across priorities. Missing SameSite is
+    // treated conservatively as Lax (no two-minute POST exception).
     const requestUrl = `${requestScheme}://${scope.host}${scope.path}`;
-    const cookieStr = serializeCookieHeader(options.store, { ...options.serializeOpts, requestUrl });
-    if (!cookieStr) continue;
-    const condition = buildCookieCondition(scope, options.scheme, options.resourceTypes);
-    condition.tabIds = [options.tabId];
-    addRules.push({
-      id: options.ruleIds[addRules.length],
-      priority: 100 + scope.path.length * 2 + (scope.type === 'host' ? 1 : 0),
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [{ header: 'Cookie', operation: 'set', value: cookieStr }],
-      },
-      condition,
-    });
+    const base = buildCookieCondition(scope, requestScheme, options.resourceTypes);
+    const site = getEtld1(scope.host);
+    const variants: Array<{ context: 'cross-site' | 'top-level-safe' | 'same-site'; condition: chrome.declarativeNetRequest.RuleCondition }> = [
+      { context: 'cross-site', condition: base },
+    ];
+    if ((options.resourceTypes as string[]).includes('main_frame')) {
+      variants.push({ context: 'top-level-safe', condition: {
+        ...base, resourceTypes: ['main_frame'], requestMethods: ['get', 'head'],
+      } });
+    }
+    if (options.scheme === requestScheme) variants.push({ context: 'same-site', condition: {
+      ...base, domainType: 'firstParty', initiatorDomains: [site], topDomains: [site],
+    } });
+    for (let variant = 0; variant < variants.length; variant++) {
+      const { context, condition } = variants[variant];
+      const cookieStr = serializeCookieHeader(options.store, {
+        ...options.serializeOpts, excludeSecure: requestScheme !== 'https', requestUrl, sameSiteContext: context,
+      });
+      if (!cookieStr) continue;
+      if (addRules.length >= options.ruleIds.length) {
+        // Never publish a partial set: a missing longer-path rule could expose
+        // a less restrictive shorter-path cookie. Fail closed at the caller.
+        throw new Error(`Cookie rule budget exhausted for tab ${options.tabId}`);
+      }
+      addRules.push({
+        id: options.ruleIds[addRules.length],
+        priority: 100 + scope.path.length * 10 + (scope.type === 'host' ? 4 : 0) + variant,
+        action: { type: 'modifyHeaders', requestHeaders: [{ header: 'Cookie', operation: 'set', value: cookieStr }] },
+        condition: { ...condition, tabIds: [options.tabId] },
+      });
+    }
+    }
   }
 
   return addRules;

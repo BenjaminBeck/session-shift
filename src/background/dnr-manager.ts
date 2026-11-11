@@ -26,7 +26,7 @@ const MAX_DNR_RULES_PER_TAB = 100;
 const DNR_RULE_ID_STRIDE = 1_000_000;
 
 const ALL_RESOURCE_TYPES = [
-  'main_frame', 'sub_frame', 'stylesheet', 'script', 'image',
+  'main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',
   'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket',
   'webbundle', 'other',
 ] as chrome.declarativeNetRequest.ResourceType[];
@@ -50,7 +50,26 @@ export function dnrRuleIdsForTab(tabId: number): number[] {
   return Array.from({ length: MAX_DNR_RULES_PER_TAB }, (_, index) => baseId + index * DNR_RULE_ID_STRIDE);
 }
 
+const ruleUpdates = new Map<number, Promise<void>>();
+
 export async function updateDNRRulesForTab(tabId: number, sessionId: string): Promise<void> {
+  const previous = ruleUpdates.get(tabId) ?? Promise.resolve();
+  const update = previous.catch(() => {}).then(async () => {
+    try { await publishDNRRulesForTab(tabId, sessionId); } catch (error) {
+      const ids = dnrRuleIdsForTab(tabId);
+      await chrome.declarativeNetRequest.updateSessionRules({
+        removeRuleIds: ids,
+        addRules: [{ id: ids[0], priority: 10000, action: { type: 'block' },
+          condition: { tabIds: [tabId], resourceTypes: ALL_RESOURCE_TYPES } }],
+      });
+      throw error;
+    }
+  });
+  ruleUpdates.set(tabId, update);
+  try { await update; } finally { if (ruleUpdates.get(tabId) === update) ruleUpdates.delete(tabId); }
+}
+
+async function publishDNRRulesForTab(tabId: number, sessionId: string): Promise<void> {
   const ruleIds = dnrRuleIdsForTab(tabId);
 
   if (!sessionId || sessionId === 'default') {
@@ -74,10 +93,8 @@ export async function updateDNRRulesForTab(tabId: number, sessionId: string): Pr
     firstPartyDomain = null;
   }
 
-  // Fail closed on Secure cookies: only an explicitly-https tab gets them. http
-  // must never carry Secure cookies in plaintext, and an unresolved scheme (tab
-  // gone / chrome:// / tabs.get threw) is treated as not-https for safety.
-  const serializeOpts: SerializeOptions = scheme === 'https' ? {} : { excludeSecure: true };
+  // Each generated network rule scopes Secure cookies by the request scheme.
+  const serializeOpts: SerializeOptions = {};
   const store = await getCookieStore(sessionId);
 
   // Profile tabs never read or write Chrome's own cookie jar — that jar belongs
@@ -88,7 +105,8 @@ export async function updateDNRRulesForTab(tabId: number, sessionId: string): Pr
   // store, published as higher-priority `Cookie: set` rules, is the only cookie
   // source. Redirect hops that outrun a capture are handled by held redirects
   // and the stale-hop guard, not by falling back to the jar.
-  const addRules = buildDnrRulesForCookieStore({
+  let addRules: chrome.declarativeNetRequest.Rule[];
+  addRules = buildDnrRulesForCookieStore({
     tabId,
     ruleIds,
     boundHost,
@@ -191,6 +209,7 @@ async function captureAndPublish(
           path,
           secure: parsed.secure,
           httpOnly: parsed.httpOnly,
+          sameSite: parsed.sameSite,
         };
       }
       if (key !== parsed.name && parsed.name in store) delete store[parsed.name];

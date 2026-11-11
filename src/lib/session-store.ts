@@ -10,6 +10,7 @@ export type CookieStoreEntry = {
   path?: string | null
   secure?: boolean
   httpOnly?: boolean
+  sameSite?: string | null
 }
 type CookieStore = Record<string, CookieStoreEntry>
 

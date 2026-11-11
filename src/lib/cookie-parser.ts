@@ -153,10 +153,12 @@ export function parseSetCookie(setCookieStr: string, requestUrl: string): Parsed
     }
   }
 
+  if (cookie.sameSite?.toLowerCase() === 'none' && !cookie.secure) return null;
+
   // Calculate expires timestamp
   // Max-Age takes precedence over Expires
   if (maxAge !== null) {
-    if (maxAge === 0) {
+    if (maxAge <= 0) {
       // Max-Age=0 means deletion
       cookie.expires = 0;
     } else {
@@ -176,6 +178,8 @@ export interface SerializeOptions {
   excludeHttpOnly?: boolean;
   excludeSecure?: boolean;
   requestUrl?: string;
+  /** Network-only filtering; document.cookie reads do not use SameSite. */
+  sameSiteContext?: 'same-site' | 'cross-site' | 'top-level-safe';
 }
 
 export function serializeCookieHeader(
@@ -189,6 +193,13 @@ export function serializeCookieHeader(
     if (opts.excludeHttpOnly && data.httpOnly) continue;
     if (opts.excludeSecure && data.secure) continue;
     if (opts.requestUrl && !cookieMatchesRequest(data, opts.requestUrl)) continue;
+    if (opts.sameSiteContext && opts.sameSiteContext !== 'same-site') {
+      const sameSite = data.sameSite?.toLowerCase();
+      // Missing/unknown attributes (including older stored cookies) are Lax.
+      // Explicit None is only accepted with Secure, as in modern browsers.
+      const unrestricted = sameSite === 'none' && data.secure;
+      if (!unrestricted && (sameSite === 'strict' || opts.sameSiteContext === 'cross-site')) continue;
+    }
     cookiePairs.push({
       name: data.name ?? key,
       path: data.path ?? '/',
@@ -222,6 +233,8 @@ export interface ParsedDocumentCookie {
   path: string;
   /** Epoch ms; null = session cookie; 0 = deletion (Max-Age<=0 / past Expires). */
   expires: number | null;
+  secure?: boolean;
+  sameSite?: string | null;
 }
 
 /**
@@ -244,6 +257,8 @@ export function parseDocumentCookie(cookieStr: string, requestUrl: string): Pars
   try { url = new URL(requestUrl); } catch { url = null; }
 
   let path = defaultCookiePath(url?.pathname);
+  let secure = false;
+  let sameSite: string | null = null;
   let maxAge: number | null = null;
   let expiresStr: string | null = null;
 
@@ -263,6 +278,12 @@ export function parseDocumentCookie(cookieStr: string, requestUrl: string): Pars
       case 'max-age':
         maxAge = parseInt(attrValue, 10);
         break;
+      case 'secure':
+        secure = true;
+        break;
+      case 'samesite':
+        sameSite = attrValue;
+        break;
       // 'domain' intentionally ignored — host-pinning enforced in background.
     }
   }
@@ -275,7 +296,7 @@ export function parseDocumentCookie(cookieStr: string, requestUrl: string): Pars
     if (!Number.isNaN(d.getTime())) expires = d.getTime();
   }
 
-  return { name, value, path, expires };
+  return { name, value, path, expires, secure, sameSite };
 }
 
 export function parseCookieString(cookieStr: string): Map<string, string> {

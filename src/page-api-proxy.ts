@@ -412,20 +412,27 @@
         let v = '';
         let path: string | undefined;
         let expires: number | undefined;
+        let sameSite: string | undefined;
         if (typeof name === 'string') {
           n = name;
           v = String(value ?? '');
         } else if (name && typeof name === 'object') {
-          const opts = name as { name?: string; value?: unknown; path?: string; expires?: number };
+          const opts = name as { name?: string; value?: unknown; path?: string; expires?: number; sameSite?: string };
           n = opts.name;
           v = String(opts.value ?? '');
           path = opts.path;
           expires = opts.expires;
+          sameSite = opts.sameSite;
         }
         if (n === undefined || !isValidCookieName(n) || !isValidCookieValue(v)) {
           return Promise.reject(new TypeError('Invalid cookie name or value'));
         }
+        if (sameSite !== undefined && !['strict', 'lax', 'none'].includes(sameSite)) {
+          return Promise.reject(new TypeError('Invalid SameSite value'));
+        }
         let cookieStr = `${n}=${v}`;
+        if (sameSite) cookieStr += `; SameSite=${sameSite}`;
+        if (location.protocol === 'https:') cookieStr += '; Secure';
         if (path) cookieStr += `; Path=${path}`;
         if (expires) cookieStr += `; Expires=${new Date(expires).toUTCString()}`;
         // Domain intentionally NOT forwarded — host-pinned in background.

@@ -119,18 +119,22 @@ export async function handleMessage(
 
         const deleteByName = (name: string) => {
           for (const [key, entry] of Object.entries(existing)) {
-            if ((entry?.name ?? key) === name && !entry?.httpOnly && cookieMatchesRequest(entry, requestUrl)) {
+            if ((entry?.name ?? key) === name && !entry?.httpOnly &&
+                (!entry.secure || currentUrl.protocol === 'https:') && cookieMatchesRequest(entry, requestUrl)) {
               delete existing[key];
             }
           }
         };
 
-        const setCookie = (name: string, value: string, path: string, expires: number | null) => {
+        const setCookie = (name: string, value: string, path: string, expires: number | null, secure = false, sameSite: string | null = null) => {
           if (hasHttpOnlyCookie(name)) return;
+          if (secure && currentUrl.protocol !== 'https:') return;
+          if (sameSite?.toLowerCase() === 'none' && !secure) return;
           const key = cookieKey(name, cookieDomain, path);
+          if (existing[key]?.secure && currentUrl.protocol !== 'https:') return;
           existing[key] = existing[key]
-            ? { ...existing[key], name, domain: cookieDomain, path, value, expires }
-            : { name, domain: cookieDomain, path, value, expires };
+            ? { ...existing[key], name, domain: cookieDomain, path, value, expires, secure, sameSite }
+            : { name, domain: cookieDomain, path, value, expires, secure, sameSite };
           if (key !== name && name in existing) delete existing[name];
         };
 
@@ -142,7 +146,7 @@ export async function handleMessage(
             if (parsed.expires !== null && parsed.expires <= Date.now()) {
               if (!hasHttpOnlyCookie(parsed.name)) deleteByName(parsed.name);
             } else {
-              setCookie(parsed.name, parsed.value, parsed.path, parsed.expires);
+              setCookie(parsed.name, parsed.value, parsed.path, parsed.expires, parsed.secure, parsed.sameSite);
             }
           }
         } else if (typeof cookieStr === 'string') {
