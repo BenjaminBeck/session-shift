@@ -172,6 +172,10 @@ export async function handleMessage(
               ? target.domain.replace(/^\./, '').toLowerCase() : null;
             for (const [key, entry] of Object.entries(existing)) {
               if ((entry?.name ?? key) !== target.name || entry?.httpOnly) continue;
+              // A structured path may differ from the document path, but its
+              // domain must still belong to the sending frame.
+              if (!cookieMatchesRequest({ ...entry, path: '/' }, requestUrl)) continue;
+              if (entry.secure && currentUrl.protocol !== 'https:') continue;
               if (targetPath && normalizeCookiePath(entry.path) !== targetPath) continue;
               if (targetDomain && (entry.domain ?? '').replace(/^\./, '').toLowerCase() !== targetDomain) continue;
               delete existing[key];

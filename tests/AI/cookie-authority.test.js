@@ -24,6 +24,16 @@ describe('page messages cannot choose cookie authority', () => {
     expect((await store())['sid|frame.test|/'].value).toBe('changed')
     expect((await store())['sid|parent.test|/']).toBeUndefined()
   })
+  it('cannot delete a foreign-domain cookie with an explicit domain', async () => {
+    await handleMessage({ action: 'updateCookie', payload: { deleteTargets: [{ name: 'sid', domain: 'victim.test' }] } }, sender)
+    expect((await store())['sid|victim.test|/'].value).toBe('original')
+  })
+  it('unqualified deletion affects only the sending domain and preserves HttpOnly', async () => {
+    await handleMessage({ action: 'updateCookie', payload: { deleteTargets: [{ name: 'sid' }, { name: 'secret' }] } }, sender)
+    expect((await store())['sid|frame.test|/']).toBeUndefined()
+    expect((await store())['sid|victim.test|/'].value).toBe('original')
+    expect((await store())['secret|frame.test|/'].value).toBe('original')
+  })
   it('rejects opaque frames instead of falling back to the top-level tab', async () => {
     await handleMessage({ action: 'updateCookie', payload: { url: 'https://victim.test/', setCookieStr: 'sid=changed' } }, { ...sender, url: 'about:blank', origin: 'null' })
     expect((await store())['sid|victim.test|/'].value).toBe('original')
