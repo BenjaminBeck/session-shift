@@ -17,6 +17,12 @@ export async function handleMessage(
   request: BackgroundMessage,
   sender: chrome.runtime.MessageSender
 ): Promise<unknown> {
+  // Content scripts may only invoke frame-scoped operations. UI operations
+  // must originate from a packaged extension page, not an arbitrary webpage.
+  const frameActions = ['getSessionForBootstrap', 'updateCookie', 'resolveHeldRedirect'];
+  if (sender.tab && !sender.url?.startsWith(chrome.runtime.getURL('')) && !frameActions.includes(request.action)) {
+    return { error: 'extension page required' };
+  }
   switch (request.action) {
     case 'setSession': {
       const { tabId, sessionId } = request.payload;
@@ -63,7 +69,7 @@ export async function handleMessage(
     }
 
     case 'getSessionForBootstrap': {
-      const tabId = request.payload?.tabId ?? sender.tab?.id;
+      const tabId = sender.tab?.id ?? request.payload?.tabId;
       if (tabId === undefined) return { sessionId: 'default', cookieStr: '' };
       const sessionId = tabSessions[tabId] || 'default';
       if (isInternalSession(sessionId)) return { sessionId: 'default', cookieStr: '' };
@@ -90,7 +96,10 @@ export async function handleMessage(
         const existing = await getCookieStore(sessionId);
         let currentUrl: URL | null = null;
         try {
-          currentUrl = new URL(request.payload.url ?? sender.tab?.url ?? '');
+          // The page can forge every field in payload, including url and nonce.
+          // Chrome's sending frame is the sole authority (never the top-level tab).
+          const documentUrl = documentCookieUrl(sender);
+          currentUrl = documentUrl ? new URL(documentUrl) : null;
         } catch {
           currentUrl = null;
         }

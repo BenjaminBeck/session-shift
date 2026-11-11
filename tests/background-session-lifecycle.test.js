@@ -10,7 +10,7 @@ function findCookieEntryByName(store, name) {
 }
 
 function tabSender(tabId, url) {
-  return { id: chrome.runtime.id, tab: { id: tabId, url } }
+  return { id: chrome.runtime.id, url, origin: new URL(url).origin, frameId: 0, tab: { id: tabId, url } }
 }
 
 describe('getSessionForBootstrap', () => {

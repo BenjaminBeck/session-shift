@@ -24,6 +24,7 @@ const COOKIE_STORE_KEY_PREFIX = 'cookies_';
  * its own http(s) URL (about:blank, srcdoc) inherits its creator's origin.
  */
 export function documentCookieUrl(sender: chrome.runtime.MessageSender): string | null {
+  if (sender.origin === 'null') return null;
   for (const candidate of [sender.url, sender.origin ? `${sender.origin}/` : undefined]) {
     if (!candidate) continue;
     try {
