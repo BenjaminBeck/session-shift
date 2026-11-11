@@ -1,6 +1,5 @@
 import { test, expect, chromium, type BrowserContext } from '@playwright/test'
 import path from 'node:path'
-import os from 'node:os'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -19,9 +18,11 @@ interface LangContext {
 }
 
 async function launchWithLang(lang: string): Promise<LangContext> {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `pw-ext-lang-${lang}-`))
+  const userDataDir = test.info().outputPath(`browser-profile-${lang}`)
+  fs.mkdirSync(userDataDir, { recursive: true })
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: process.env.PW_HEADLESS === '1',
+    channel: 'chromium',
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,

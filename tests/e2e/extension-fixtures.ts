@@ -1,6 +1,5 @@
 import { test as base, chromium, type BrowserContext, type Page } from '@playwright/test'
 import path from 'node:path'
-import os from 'node:os'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { startMockCookieServer } from './mock-cookie-server'
@@ -21,14 +20,14 @@ export const test = base.extend<ExtensionFixtures>({
   // Each test gets a fresh persistent context with its own temp profile dir.
   // Using '' (CWD) causes parallel workers to collide on the same Chrome profile.
   context: async ({}, use, testInfo) => {
-    const userDataDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), `pw-ext-${testInfo.workerIndex}-`),
-    )
+    const userDataDir = testInfo.outputPath('browser-profile')
+    fs.mkdirSync(userDataDir, { recursive: true })
     const ctx = await chromium.launchPersistentContext(userDataDir, {
       // Chrome's "new" headless mode (Chrome 109+) supports extensions, unlike
       // classic headless. Default stays headed (matches playwright.config.ts);
       // set PW_HEADLESS=1 to force headless for this run only.
       headless: process.env.PW_HEADLESS === '1',
+      channel: 'chromium',
       args: [
         `--disable-extensions-except=${EXTENSION_PATH}`,
         `--load-extension=${EXTENSION_PATH}`,

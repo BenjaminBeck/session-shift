@@ -19,7 +19,7 @@ export default defineConfig({
   },
   // Allow assertions to wait up to 10s for async storage/render cycles
   expect: { timeout: 10_000 },
-  outputDir: 'test-results/',
+  outputDir: process.env.SESSIONSHIFT_TEST_ARTIFACTS ?? '../../_agent/session-shift-review/playwright-results',
   projects: [
     {
       name: 'chromium-extension',
