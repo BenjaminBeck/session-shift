@@ -21,6 +21,7 @@ import {
   noteNavigationRequest,
 } from './pre-assignment-navigations.js';
 import { heldRedirectTarget, noteHeldRedirect } from './held-redirects.js';
+import { protectUrl, tabExemption } from './restart-guard.js';
 
 const MAX_DNR_RULES_PER_TAB = 100;
 const DNR_RULE_ID_STRIDE = 1_000_000;
@@ -58,7 +59,7 @@ export async function updateDNRRulesForTab(tabId: number, sessionId: string): Pr
     try { await publishDNRRulesForTab(tabId, sessionId); } catch (error) {
       const ids = dnrRuleIdsForTab(tabId);
       await chrome.declarativeNetRequest.updateSessionRules({
-        removeRuleIds: ids,
+        removeRuleIds: [...ids, tabExemption(tabId).id],
         addRules: [{ id: ids[0], priority: 10000, action: { type: 'block' },
           condition: { tabIds: [tabId], resourceTypes: ALL_RESOURCE_TYPES } }],
       });
@@ -73,7 +74,8 @@ async function publishDNRRulesForTab(tabId: number, sessionId: string): Promise<
   const ruleIds = dnrRuleIdsForTab(tabId);
 
   if (!sessionId || sessionId === 'default') {
-    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: ruleIds, addRules: [] });
+    const exemption = tabExemption(tabId);
+    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [...ruleIds, exemption.id], addRules: [exemption] });
     return;
   }
 
@@ -83,15 +85,18 @@ async function publishDNRRulesForTab(tabId: number, sessionId: string): Promise<
   const boundHost = null;
   let scheme: 'https' | 'http' | null = null;
   let firstPartyDomain: string | null = null;
+  let currentUrl: string | undefined;
   try {
     const tab = await chrome.tabs.get(tabId);
     const url = new URL(tab.url ?? '');
+    currentUrl = url.href;
     scheme = url.protocol === 'https:' ? 'https' : url.protocol === 'http:' ? 'http' : null;
     if (scheme) firstPartyDomain = getEtld1(url.hostname);
   } catch {
     scheme = null;
     firstPartyDomain = null;
   }
+  if (currentUrl) await protectUrl(currentUrl);
 
   // Each generated network rule scopes Secure cookies by the request scheme.
   const serializeOpts: SerializeOptions = {};
@@ -119,7 +124,8 @@ async function publishDNRRulesForTab(tabId: number, sessionId: string): Promise<
 
   // Atomic remove+add: Chrome processes the removal before the addition within a
   // single call, so concurrent callers for the same tab can't collide on rule ID.
-  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: ruleIds, addRules });
+  const exemption = tabExemption(tabId);
+  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [...ruleIds, exemption.id], addRules: [...addRules, exemption] });
 }
 
 // Rules are per tab, but a profile's cookie store is shared by every tab using

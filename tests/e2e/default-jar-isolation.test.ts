@@ -145,6 +145,7 @@ test.describe('Profile tabs never touch Chrome\'s own cookie jar', () => {
       await page.close()
       const normal = await context.newPage()
       await normal.goto(`${app.url}/dashboard`)
+      await normal.getByRole('button', { name: 'Normale Chrome-Sitzung' }).click()
       await expect(normal).toHaveURL(/\/login$/) // the normal browser never logged in
     })
 

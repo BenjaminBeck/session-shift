@@ -25,6 +25,7 @@ function getEntryPoints() {
     ...tsFilesIn(path.join(SRC, "background")),
     ...tsFilesIn(path.join(SRC, "lib")),
     path.join(SRC, "content.ts"),
+    path.join(SRC, "restore.ts"),
     path.join(SRC, "page-api-proxy.ts"),
     path.join(SRC, "options", "options.ts"),
     ...tsFilesIn(path.join(SRC, "popup")),

@@ -1,13 +1,14 @@
 // index.ts — Service worker entry point: startup + Chrome API listener registration.
 
 import { restoreTabSessions, tabSessions, persistTabSessions, updateBadge } from './session-manager.js';
-import { dnrRuleIdsForTab, registerWebRequestListener } from './dnr-manager.js';
+import { dnrRuleIdsForTab, registerWebRequestListener, updateDNRRulesForTab } from './dnr-manager.js';
 import { setupContextMenu, registerStorageListener } from './context-menu-manager.js';
 import { registerLinkedTabInheritance } from './linked-tab-inheritance.js';
 import { handleMessage } from './message-handler.js';
 import { registerDocumentCookieBroadcast } from './document-cookie-sync.js';
 import { forgetHeldRedirectsForTab } from './held-redirects.js';
 import { forgetPreAssignmentTab } from './pre-assignment-navigations.js';
+import { tabExemption } from './restart-guard.js';
 import type { BackgroundMessage } from '../lib/types.js';
 import { getProfiles, isInternalSession } from '../lib/session-store.js';
 import { runExpiredPurge, runOrphanPurge } from './storage-gc.js';
@@ -99,9 +100,19 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     delete tabSessions[tabId];
     await persistTabSessions();
   }
-  chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: dnrRuleIdsForTab(tabId) }).catch(() => {});
+  chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [...dnrRuleIdsForTab(tabId), tabExemption(tabId).id] }).catch(() => {});
   forgetHeldRedirectsForTab(tabId);
   forgetPreAssignmentTab(tabId);
+});
+
+// Record every committed profile destination, including pages without Set-Cookie.
+chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId }) => {
+  if (frameId !== 0) return;
+  await restored;
+  const sessionId = tabSessions[tabId];
+  if (sessionId && !isInternalSession(sessionId)) {
+    await updateDNRRulesForTab(tabId, sessionId).catch(error => console.error('[bg] navigation rules:', error));
+  }
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {

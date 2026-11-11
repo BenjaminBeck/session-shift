@@ -162,6 +162,8 @@ test.describe('Cookie isolation', () => {
     // First-party global jar must be untouched: a fresh default tab still sees alice.
     const checkTab = await context.newPage()
     await checkTab.goto(`${mockServerUrl}/cookies?t=check`)
+    await checkTab.getByRole('button', { name: 'Normale Chrome-Sitzung' }).click()
+    await checkTab.waitForURL(`${mockServerUrl}/cookies?t=check`)
     expect(JSON.parse(await checkTab.textContent('body') ?? '{}').cookies.user).toBe('alice')
 
     // Third-party global jar must not receive bob from the isolated subresource.
@@ -254,6 +256,8 @@ test.describe('Cookie isolation', () => {
 
     const checkTab = await context.newPage()
     await checkTab.goto(`${mockServerUrl}/cookies?t=default-after-fetch`)
+    await checkTab.getByRole('button', { name: 'Normale Chrome-Sitzung' }).click()
+    await checkTab.waitForURL(`${mockServerUrl}/cookies?t=default-after-fetch`)
     expect(JSON.parse(await checkTab.textContent('body') ?? '{}').cookies.user).toBe('alice')
   })
 

@@ -8,7 +8,7 @@ DIST="$ROOT/dist"
 rm -rf "$DIST"
 mkdir -p "$DIST/options" "$DIST/popup"
 
-cp "$SRC/manifest.json" "$DIST/"
+cp "$SRC/manifest.json" "$SRC/restore.html" "$DIST/"
 cp -r "$SRC/icons" "$DIST/"
 cp -r "$SRC/_locales" "$DIST/"
 cp "$SRC"/options/options.html "$SRC"/options/options.css "$DIST/options/"

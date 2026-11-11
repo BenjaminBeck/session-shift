@@ -7,6 +7,7 @@ const SRC = path.join(ROOT, "src");
 const DIST = path.join(ROOT, "dist");
 
 const STATIC_COPY_MAP = [
+  { src: path.join(SRC, "restore.html"), dest: path.join(DIST, "restore.html") },
   { src: path.join(SRC, "manifest.json"), dest: path.join(DIST, "manifest.json") },
   { src: path.join(SRC, "options", "options.html"), dest: path.join(DIST, "options", "options.html") },
   { src: path.join(SRC, "options", "options.css"), dest: path.join(DIST, "options", "options.css") },

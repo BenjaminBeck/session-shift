@@ -150,7 +150,8 @@ describe('setSession — switching an open tab to a profile', () => {
 
     const calls = chrome.declarativeNetRequest.updateSessionRules.mock.calls
     const { addRules } = calls[calls.length - 1][0]
-    expect(addRules.length).toBe(0)
+    expect(addRules).toHaveLength(1)
+    expect(addRules[0].action.type).toBe('allow')
 
     delete tabSessions[403]
   })

@@ -12,6 +12,7 @@ import { getLanguagePreference, createLocalizer } from '../lib/localization.js';
 import { syncTabToGroup, syncProfileGroupAppearance } from './tab-group-sync.js';
 import { documentCookieUrl, serializeDocumentCookie } from './document-cookie-sync.js';
 import { resolveHeldRedirect } from './held-redirects.js';
+import { protectUrl } from './restart-guard.js';
 
 export async function handleMessage(
   request: BackgroundMessage,
@@ -232,6 +233,7 @@ export async function handleMessage(
       if (!/^https?:/.test(url)) return { error: 'invalid url scheme' };
       const list = await getProfiles();
       if (!list.find(s => s.id === sessionId)) return { error: 'unknown session' };
+      await protectUrl(url);
       const newTab = await chrome.tabs.create({ url: 'about:blank', active: true });
       if (newTab.id === undefined) return { error: 'tab creation failed' };
       const tabId = newTab.id; // narrowed once — captured by closures below, where `newTab.id` itself would re-widen to `number | undefined`

@@ -86,6 +86,7 @@ function createChromeMock() {
     },
     declarativeNetRequest: {
       updateSessionRules: vi.fn().mockResolvedValue({}),
+      updateDynamicRules: vi.fn().mockResolvedValue({}),
     },
     storage: {
       session: {
@@ -129,6 +130,7 @@ function createChromeMock() {
     },
     webNavigation: {
       onCreatedNavigationTarget: { addListener: vi.fn() },
+      onCommitted: { addListener: vi.fn() },
     },
     action: {
       setBadgeText: vi.fn(),

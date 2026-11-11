@@ -132,6 +132,8 @@ test.describe('Linked tab profile inheritance', () => {
     )
 
     const linked = await openLinkInNewTab(context, opener, `${mockServerUrl}/cookies?t=linked-off`)
+    await linked.getByRole('button', { name: 'Normale Chrome-Sitzung' }).click()
+    await linked.waitForURL(`${mockServerUrl}/cookies?t=linked-off`)
     const linkedResult = JSON.parse(await linked.textContent('body') ?? '{}')
     expect(linkedResult.cookies.user).toBe('default-jar-off')
   })
